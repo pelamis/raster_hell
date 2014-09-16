@@ -423,7 +423,7 @@ int main(int argc, _TCHAR* argv[])
 	glfwSetErrorCallback(error_callback);
 
 	GLFWwindow* window;
-	
+	//comment
 //	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 1);
 //	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 	//glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_COMPAT_PROFILE);
