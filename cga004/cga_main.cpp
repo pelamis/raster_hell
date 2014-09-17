@@ -9,6 +9,9 @@
 #include "glfw3.h"
 #include "math.h"
 #include <random>
+#include <list>
+#include <vector>
+#include <iterator>
 #include <time.h>
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
@@ -16,6 +19,8 @@
 GLdouble A, B, C, D, mX, mY, minY, maxY;
 typedef unsigned int uint;
 typedef unsigned char uchar;
+typedef std::list<int> IntList;
+typedef std::vector<IntList> IntListArray;
 unsigned char inPoly, ready = 0, alias = 0, go_fill = 0;
 
 typedef struct GLPoint
@@ -337,11 +342,12 @@ static void stringscan(Pixmap *buffer, List *list, List *sscListArray)
 	//for (i = 0; i < list->items; i++) mids[i].y = 0;
 }
 
-void draw(Pixmap *buffer, List *list, List *sscListArray)
+void draw(Pixmap *buffer, List *list, IntListArray *sscListArray)
 {
 	Elem *elem = NULL;
 	Integer *val = NULL;
 	Elem *xcoord = NULL;
+	int y;
 	float i,y_s,y_e,x_s,x_e,x;
 	//GLint x=0;
 	//List *sscListArray = new List[(int)C * 2];
@@ -369,7 +375,7 @@ void draw(Pixmap *buffer, List *list, List *sscListArray)
 					x=nearbyintf(x_s + (x_e - x_s)*(i - y_s) / (y_e - y_s));
 					val->value = (int)x;
 					xcoord->data = (void *)val;
-					sscListArray[(GLint)i].addBeforeHead(xcoord);
+					sscListArray[(GLint)i]
 				}
 			}
 			
@@ -410,7 +416,8 @@ int main(int argc, _TCHAR* argv[])
 	pixx = NULL;
 	int i;
 	Pixmap buffer(SCREEN_HEIGHT, SCREEN_WIDTH);
-	Elem *sscListArray = new Elem[(int)C * 2];
+	//vector<list<int>> sscListArray((int)C * 2);
+	IntListArray sscListArray((int)C * 2);
 	pixx = (GLvoid *)(&buffer);
 	glRasterPos2s(0, 0);
 	// initialise GLFW
