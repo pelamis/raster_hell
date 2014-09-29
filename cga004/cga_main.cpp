@@ -65,7 +65,6 @@ void(*rasterL)(GLPoint start, GLPoint end) = bresenham;
 
 void getPolyEdges();
 void getCrosses(Edge e);
-void drawContour();
 void fillLine(int start, int end, int y);
 
 void clearAllTheData();
@@ -142,8 +141,10 @@ static void resize_callback(GLFWwindow* window, int width, int height)
 	A = width / 4.0;
 	B = 0.0;
 	C = D = height / 2.0;
-	buffer.resize((int)C*2,(int)A*4);
+	clearAllTheData();
 	reInitSscLArr((int)C * 2);
+	buffer.resize((int)C * 2, (int)A * 4);
+
 	printf("Reshape occured. New size is: %lf x %lf\n",A*4,C*2);
 }
 
@@ -431,7 +432,7 @@ Pixmap::Pixmap(uint h, uint w)
 
 void Pixmap::resize(int h, int w)
 {
-	delete this->map;
+	delete map;
 	this->height = h, this->width = w;
 	this->map = new RGB[height*width];
 	clearMap();
