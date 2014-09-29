@@ -8,32 +8,18 @@
 #include <gl\GL.h>
 #include "glfw3.h"
 #include "math.h"
-#include <random>
 #include <list>
 #include <vector>
 #include <iterator>
-#include <time.h>
+
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
-
-GLdouble A, B, C, D, mX, mY, minY, maxY;
-typedef unsigned int uint;
-typedef unsigned char uchar;
-typedef std::list<int> IntList;
-typedef std::vector<IntList> IntListArray;
-unsigned char inPoly, ready = 0, alias = 0, go_fill = 0;
 
 typedef struct GLPoint
 {
 	GLfloat	x = -1;
 	GLfloat	y = -1;
 } GLPoint;
-
-typedef struct Elem
-{
-	void *data;
-	Elem *next, *prev;
-}Elem;
 
 typedef struct Edge
 {
@@ -49,24 +35,16 @@ typedef struct RGB
 {
 	GLfloat r, g, b;
 }RGB;
-//сделать универсальным!
 
-//сделать универсальным!
-class List
-{
-public:
-	Elem *first;
-	int items;
-	List();
-	void clearAll();
-	void addBeforeHead(Elem *elem);
-	int insertAfter(Elem *target, Elem *elem);
-	int insertBefore(Elem *target, Elem *elem);
-	(Elem *)insSort(Elem *l, int lstLen);
-	(Elem*) delElem(Elem *elem);
-	void dEnumElemz(void(*enumElem)(void *d));
-	(Elem*) searchElem(Elem *elem,int (*compare)(void *a, void *b));
-};
+
+GLdouble A, B, C, D, mX, mY, minY, maxY;
+typedef unsigned int uint;
+typedef unsigned char uchar;
+typedef std::list<int> IntList;
+typedef std::vector<IntList> IntListArray;
+typedef std::vector<Edge> Edges;
+typedef std::vector<GLPoint> PPoly;
+unsigned char ready = 0, alias = 0, go_fill = 0;
 
 class Pixmap
 {
@@ -76,29 +54,55 @@ public:
 	~Pixmap();
 	void clearMap();
 	void setPixel(uint x, uint y, GLfloat R, GLfloat G, GLfloat B, GLfloat intens);
+	void resize(int h, int w);
 	RGB getPixel(uint x, uint y);
 	uint height, width;
 };
-static void bresenham(GLPoint start, GLPoint end, Pixmap *map);
-static void bresenham_aa(GLPoint start, GLPoint end, Pixmap *map);
-static void addX(int x, int y, List *sscListArray);
-void enumEdges(void *data);
-void crosses(void *data);
-void (*rasterL)(GLPoint start, GLPoint end, Pixmap *map) = bresenham;
-GLPoint first, prev, current;
-List lst = List();
-//List *sscListArray = new List[(int)C * 2];
+
+static void bresenham(GLPoint start, GLPoint end);
+static void bresenham_aa(GLPoint start, GLPoint end);
+void(*rasterL)(GLPoint start, GLPoint end) = bresenham;
+
+void getPolyEdges();
+void getCrosses(Edge e);
+void drawContour();
+void fillLine(int start, int end, int y);
+
+void clearAllTheData();
 GLint sgn(GLfloat expr);
 
+PPoly polygon;
+Edges lst;
+IntListArray sscListArray;
+Pixmap buffer(SCREEN_HEIGHT, SCREEN_WIDTH);
 
+void getPolyEdges()
+{
+	Edge e;
+	int i, k = polygon.size();
+
+	for (i = 0; i < k; i++) //Преобразование набора точек полигона в массив граней
+	{
+		e.p0 = polygon[i%k], e.p1 = polygon[(i + 1) % k];
+		lst.push_back(e);
+	}
+	return;
+}
 
 static void cursor_callback(GLFWwindow* window, double x, double y)
 {
 	
 }
 
-GLvoid * pixx;
-//REWORK THIS FUNC!!!
+void reInitSscLArr(int newY)
+{
+	int i;
+	IntList dummy;
+	sscListArray.clear();
+	for (i = 0; i < newY; i++) sscListArray.push_back(dummy);
+	
+}
+
 static void mouse_callback(GLFWwindow* window, int button, int action, int mods)
 {
 	//BEWARE OF IDIOTZ!!!
@@ -108,41 +112,21 @@ static void mouse_callback(GLFWwindow* window, int button, int action, int mods)
 	{
 		if (action == GLFW_PRESS)
 		{
-			inPoly = 0;		//Одинарный клик RMB - сигнал к завершению задания полигона
 			ready = 1;
-			prev.x = current.x, prev.y = current.y;
-			current.x = first.x, current.y = first.y;
-			printf_s("minY:\t%lf\nmaxY:\t%lf\n", minY, maxY);
-			go_fill = 1;
-			
 		}
 	}
 	if ((button == GLFW_MOUSE_BUTTON_LEFT) && (action == GLFW_PRESS))
 	{
 		glfwGetCursorPos(window, &mX, &mY);
-		//mY = C * 2 - mY;
 		printf_s("Got cursor: (%lf,%lf)\n", mX, mY);
-		if (inPoly == 0)
+		if (ready)
 		{
-			inPoly = 1;
-			minY = mY;
-			maxY = mY;
-			first.x = (GLint)mX;
-			first.y = (GLint)mY;
-			current.x = (GLint)mX;
-			current.y = (GLint)mY;
-			prev.x = current.x, prev.y = current.y;
+			ready = 0;
+			clearAllTheData();
 		}
-		else 
-		{
-			if (mY > maxY) maxY = mY;
-			else if (mY < minY) minY = mY;
-			prev.x = current.x, prev.y = current.y;
-			current.x = (GLint)mX;
-			current.y = (GLint)mY;
-			ready = 1;
-		}
-		
+		temp.x = (GLint)mX;
+		temp.y = (GLint)mY;
+		polygon.push_back(temp);
 	}
 }
 
@@ -158,6 +142,8 @@ static void resize_callback(GLFWwindow* window, int width, int height)
 	A = width / 4.0;
 	B = 0.0;
 	C = D = height / 2.0;
+	buffer.resize((int)C*2,(int)A*4);
+	reInitSscLArr((int)C * 2);
 	printf("Reshape occured. New size is: %lf x %lf\n",A*4,C*2);
 }
 
@@ -167,14 +153,15 @@ static void keyboard_callback(GLFWwindow* window, int key, int scancode, int act
 		glfwSetWindowShouldClose(window, GL_TRUE);
 	if (key == GLFW_KEY_C && action == GLFW_PRESS)
 	{
-		((Pixmap *)pixx)->clearMap();		//сигнал к очистке поля
-		lst.clearAll();
-		prev.x = -1, prev.y = -1;
-		current.x = -1, current.y = -1;
+		buffer.clearMap();		//сигнал к очистке поля
+		clearAllTheData();
 	}
 	if (key == GLFW_KEY_R && action == GLFW_PRESS)
 		if (!alias) alias=1,rasterL=bresenham_aa;
 		else alias = 0, rasterL = bresenham;
+
+	if (key == GLFW_KEY_F && action == GLFW_PRESS)
+		go_fill = (go_fill==0) ? 1 : 0;
 }
 
 static void error_callback(int error, const char* description)
@@ -183,65 +170,42 @@ static void error_callback(int error, const char* description)
 }
 
 //=============================================================
-static void bresenham_mod(GLPoint start, GLPoint end, List *sscListArray, Pixmap *map)
-{
-	GLint x = (GLint)start.x, y = (GLint)start.y,
-		dx = (GLint)abs(end.x - start.x),
-		dy = (GLint)abs(end.y - start.y),
-		sx = sgn(end.x - start.x), i, tmp,
-		sy = sgn(end.y - start.y), swap = 0, e,lock=0;
-	
 
-	if (dy == 0) return;
-	if (dy > dx)
+void fillLine(int start, int end, int y)
+{
+	int i;
+	for (i = start; i <= end; i++)
 	{
-		swap = 1;
-		tmp = dx, dx = dy, dy = tmp;
+		buffer.setPixel(i, y, 1, 1, 1, 1);
 	}
-	e = 2 * dy - dx;
-	for (i = 0; i < dx; i++)
-	{
-		map->setPixel(x, y, 1, 1, 1, 1);
-		while (e >= 0)
-		{
-			/*if (!lock && swap && (!(sx + sy)))
-			{
-				addX(x, y, sscListArray);
-				lock = 1;
-			}*/
-			
-			if (swap)
-			{
-				x += sx;
-			}
-			else {
-				y += sy;
-				//lock = 0;
-			}
-			e -= 2 * dx;
-		}
-		if (swap) 
-		{
-			y += sy;
-		}
-		else x += sx;
-		e += 2 * dy;
-	}
-	
-	
-	//clean up all the data!!!
 }
 
-static void addX(int x, int y, List *sscListArray)
+//поиск и добавление в списки точек пересечения сканирующих строк с рёбрами полигона
+void getCrosses(Edge e)
 {
-	Integer *val = new Integer;
-	Elem *xcoord = new Elem;
-	val->value = (int)x;
-	xcoord->data = (void *)val;
-	sscListArray[(GLint)y].addBeforeHead(xcoord);
+	int i;
+	GLfloat x;
+	GLPoint beg, end;
+	beg = (e.p0.y < e.p1.y) ? e.p0 : e.p1;
+	end = (e.p0.y < e.p1.y) ? e.p1 : e.p0;
+	if (beg.y == end.y) return;
+	//концевые точки отрезка не учитываются
+	for (i = beg.y+1; i <= end.y-1; i++)
+	{
+		x=nearbyintf(beg.x + (end.x - beg.x)*(i - beg.y) / (end.y - beg.y)); //вычисление точки пересечения сканирующей строки
+		sscListArray[(int)i].push_back((int)x);								 //с обрабатываемым ребром
+	}
+	return;
 }
 
-static void bresenham(GLPoint start, GLPoint end, Pixmap *map)
+void clearAllTheData()
+{
+	lst.clear();
+	polygon.clear();
+	sscListArray.clear();
+}
+
+static void bresenham(GLPoint start, GLPoint end)
 {
 	GLint x = (GLint)start.x, y = (GLint)start.y,
 		dx = (GLint)abs(end.x - start.x),
@@ -256,7 +220,7 @@ static void bresenham(GLPoint start, GLPoint end, Pixmap *map)
 	e = 2 * dy - dx;
 	for (i = 0; i < dx; i++)
 	{
-		map->setPixel(x, y, 1, 1, 1, 1);
+		buffer.setPixel(x, y, 1, 1, 1, 1);
 		while (e >= 0)
 		{
 			if (swap) x += sx;
@@ -268,9 +232,10 @@ static void bresenham(GLPoint start, GLPoint end, Pixmap *map)
 		e += 2 * dy;
 	}
 }
-static void bresenham_aa(GLPoint start, GLPoint end, Pixmap *map)
+
+//Брезенхем со сглаживанием
+static void bresenham_aa(GLPoint start, GLPoint end)
 {
-	//BEWARE OF IDIOTZ!!!
 	GLint x = (GLint)start.x, y = (GLint)start.y, I = 1,
 		dx = (GLint)abs(end.x - start.x),
 		dy = (GLint)abs(end.y - start.y),
@@ -284,7 +249,7 @@ static void bresenham_aa(GLPoint start, GLPoint end, Pixmap *map)
 	}
 	m = ((GLdouble)I * (GLdouble)dy) / (GLdouble)dx;
 	w = (GLdouble)I - m, e = (GLdouble)I / 2;
-	map->setPixel(x, y, 1, 1, 1, e);
+	buffer.setPixel(x, y, 1, 1, 1, e);
 	for (i = 0; i < dx;i++)
 	{
 		if (swap)
@@ -316,94 +281,70 @@ static void bresenham_aa(GLPoint start, GLPoint end, Pixmap *map)
 			}
 			
 		}
-		map->setPixel(x, y, 1, 1, 1, e);
+		buffer.setPixel(x, y, 1, 1, 1, e);
 	}
 }
 
-static void stringscan(Pixmap *buffer, List *list, List *sscListArray)
+static void stringscan()
 {
-	int i;
-	Elem *elem = list->first;
-	for (i = 0; i < C * 2; i++)
+	int i, k, p_k = polygon.size(),tempLV;
+	std::vector<int> temp;
+	IntList l;
+	getPolyEdges();
+
+	// обработка вершин многоугольника
+	if (sgn(polygon[0].y - polygon[p_k - 1].y) != sgn(polygon[1].y - polygon[0].y)) sscListArray[polygon[0].y].push_back(polygon[0].x);
+	sscListArray[polygon[0].y].push_back(polygon[0].x);
+
+	for (i = 1; i < p_k; i++)
 	{
-		if (sscListArray[i].first != NULL)
+		if (sgn(polygon[i].y - polygon[i - 1].y) != sgn(polygon[(i + 1) % p_k].y - polygon[i].y)) sscListArray[polygon[i].y].push_back(polygon[i].x);
+		sscListArray[polygon[i].y].push_back(polygon[i].x);
+	}
+	
+	//Поиск пересечения со скан. строками неконцевых точек каждого ребра полигона
+	for (i = 0; i < p_k; i++) getCrosses(lst[i]);
+
+	for (i = 0; i < sscListArray.size(); i++)
+	{	
+		if (sscListArray[i].size() > 0)
 		{
-			printf_s("\nString #%d:\n",i);
-			sscListArray[i].dEnumElemz(crosses);
+			sscListArray[i].sort();
+			for (IntList::iterator j = sscListArray[i].begin(); j != sscListArray[i].end(); j++)
+			{
+				tempLV = *j;
+				temp.push_back(tempLV);
+			}
+
+			for (k = 0; k < temp.size(); k += 2) fillLine(temp[k], temp[k + 1], i);
 			
+			temp.clear();
 		}
-		
 	}
-	for (i = 0; i < C * 2; i++)
-	{
-		if (sscListArray[i].first!=NULL) sscListArray[i].clearAll();
-	}
-	delete sscListArray;
-	//for (i = 0; i < list->items; i++) mids[i].y = 0;
 }
 
-void draw(Pixmap *buffer, List *list, IntListArray *sscListArray)
+void draw()
 {
-	Elem *elem = NULL;
-	Integer *val = NULL;
-	Elem *xcoord = NULL;
-	int y;
-	float i,y_s,y_e,x_s,x_e,x;
-	//GLint x=0;
-	//List *sscListArray = new List[(int)C * 2];
-	glDrawPixels(buffer->width, buffer->height, GL_RGB, GL_FLOAT, buffer->map);
+	Edge e;
+
+	int y,i,p_k=polygon.size(),peak=0;
+
+	glDrawPixels(buffer.width, buffer.height, GL_RGB, GL_FLOAT, buffer.map);
 	if (ready)
 	{
-		printf_s("Gotcha!\n");
-		elem = new Elem;
-		elem->data = new Edge;
-		((Edge *)(elem->data))->p0 = prev, ((Edge *)(elem->data))->p1 = current, elem->next = NULL;
-		list->addBeforeHead(elem);
-		if (elem != NULL)
+		if (go_fill)
 		{
-			rasterL(prev, current, buffer);
-			//x = x_s + (x_e-x_s)*(y_str-y_s)/(y_e-y_s)
-			//bresenham_mod(prev, current, sscListArray, buffer);
-			if (current.y != prev.y)
-			{
-				if (current.y > prev.y) y_e = current.y, y_s = prev.y,x_e=current.x,x_s=prev.x;
-				else y_e = prev.y, y_s = current.y,x_e=prev.x,x_s=current.x;
-				for (i = y_s; i <= y_e; i++)
-				{
-					xcoord = new Elem;
-					val = new Integer;
-					x=nearbyintf(x_s + (x_e - x_s)*(i - y_s) / (y_e - y_s));
-					val->value = (int)x;
-					xcoord->data = (void *)val;
-					sscListArray[(GLint)i]
-				}
-			}
-			
-			//rasterL(prev, current, list,buffer);
+			if (sscListArray.size() != buffer.height) reInitSscLArr(buffer.height);
+			//заливка выполняется только для замкнутых фигур
+			if (polygon.size()>2) stringscan();
 		}
-		ready = 0;
+		for (i = 0; i < p_k; i++) rasterL(polygon[i%p_k], polygon[(i + 1) % p_k]);
+		
 	}
-	if (go_fill) {
-		elem = new Elem;
-		elem->data = new Edge;
-		((Edge *)(elem->data))->p0 = prev, ((Edge *)(elem->data))->p1 = current, elem->next = NULL;
-		list->addBeforeHead(elem);
-		if (current.y != prev.y)
-		{
-			if (current.y > prev.y) y_e = current.y, y_s = prev.y, x_e = current.x, x_s = prev.x;
-			else y_e = prev.y, y_s = current.y, x_e = prev.x, x_s = current.x;
-			for (i = y_s; i <= y_e; i++)
-			{
-				xcoord = new Elem;
-				val = new Integer;
-				x = nearbyintf(x_s + (x_e - x_s)*(i - y_s) / (y_e - y_s));
-				val->value = (int)x;
-				xcoord->data = (void *)val;
-				sscListArray[(GLint)i].addBeforeHead(xcoord);
-			}
-		}
-		stringscan(buffer, list,sscListArray);
-		go_fill = 0;
+	else
+	{
+		if (polygon.size()>0)
+			for (i = 0; i < polygon.size()-1; i++) rasterL(polygon[i], polygon[i + 1]);
 	}
 }
 
@@ -412,13 +353,7 @@ int main(int argc, _TCHAR* argv[])
 	A = SCREEN_WIDTH / 4.0;
 	B = 0.0;
 	C = D = SCREEN_HEIGHT / 2.0;
-	inPoly = 0;
-	pixx = NULL;
 	int i;
-	Pixmap buffer(SCREEN_HEIGHT, SCREEN_WIDTH);
-	//vector<list<int>> sscListArray((int)C * 2);
-	IntListArray sscListArray((int)C * 2);
-	pixx = (GLvoid *)(&buffer);
 	glRasterPos2s(0, 0);
 	// initialise GLFW
     if(!glfwInit())
@@ -457,7 +392,7 @@ int main(int argc, _TCHAR* argv[])
     resize_callback(window, SCREEN_WIDTH, SCREEN_HEIGHT);
 	while (!glfwWindowShouldClose(window))
 	{
-		draw(&buffer,&lst,sscListArray);
+		draw();
 
 		glfwSwapBuffers(window);
 		
@@ -469,8 +404,8 @@ int main(int argc, _TCHAR* argv[])
 
 	// clean up and exit
     glfwTerminate();
-	lst.dEnumElemz(enumEdges);
-	lst.clearAll();
+
+	clearAllTheData();
 	scanf_s("\n");
 	return 0;
 }
@@ -489,6 +424,14 @@ void Pixmap::clearMap()
 
 Pixmap::Pixmap(uint h, uint w)
 {
+	this->height = h, this->width = w;
+	this->map = new RGB[height*width];
+	clearMap();
+}
+
+void Pixmap::resize(int h, int w)
+{
+	delete this->map;
 	this->height = h, this->width = w;
 	this->map = new RGB[height*width];
 	clearMap();
@@ -514,139 +457,8 @@ RGB Pixmap::getPixel(uint x, uint y)
 
 //=============================================================
 
-List::List()
-{
-	first = NULL;
-	items = 0;
-}
-
-void List::addBeforeHead(Elem *elem)
-{
-	Elem *tmp;
-	if (elem != NULL)
-	{
-		tmp = first;
-		//tmp->prev = elem;
-		first = elem;
-		first->prev = NULL;
-		elem->next = tmp;
-		items++;
-	}
-}
-
-int List::insertAfter(Elem *target, Elem *elem)
-{
-	if ((target != NULL) && (elem != NULL))
-	{
-		elem->prev = target;
-		elem->next = target->next;
-		target->next->prev = elem;
-		target->next = elem;
-		items++;
-	}
-	else return -1;
-	return 0;
-}
-
-int List::insertBefore(Elem *target, Elem *elem)
-{
-	Elem *preTarget = target->prev;
-	target->prev = elem;
-	elem->next = target;
-	elem->prev = preTarget;
-	preTarget->next = elem;
-	return 0;
-}
-Elem* List::delElem(Elem *elem)
-{
-	Elem *tmp = first;
-	for (; ((tmp!=NULL)&&(tmp->next != elem)); tmp = tmp->next);
-	tmp->next = elem->next;
-	elem->next = NULL;
-	items--;
-	return elem;
-}
-
-Elem* List::searchElem(Elem *elem, int (*compare)(void *a, void *b))
-{
-	Elem *tmp = first;
-	int result = 0;
-	for (; (result==0)&&(tmp->next != NULL); tmp = tmp->next)
-	{
-		result = compare(elem->data, tmp->data);
-	}
-	if (result) return tmp;
-	printf_s("ЕГГОГ\n");
-	return NULL;
-}
-
-void List::dEnumElemz(void(*enumElem)(void *d))
-{
-	Elem *curr = first;
-	while (curr != NULL)
-	{
-		enumElem(curr->data);
-		curr = curr->next;
-	}
-}
-
-void List::clearAll()
-{
-	Elem *tmp = first;
-	while (items > 0)
-	{
-		first = tmp->next;
-		delete tmp->data;
-		delete tmp;
-		tmp = first;
-		items--;
-	}
-
-}
-
-Elem * List::insSort(Elem *l, int lstLen)
-{
-	Elem *pick = l->next, *save = pick->next,
-		*loc = pick->prev;
-	/*while ((pick != l))
-	{
-		loc = pick->prev;
-		while ((loc != l) && (pick != save))
-		{
-			if (((loc->prev)->v <= pick->v) && (pick->v <= loc->v))
-			{
-				delElem(pick);
-				insertBefore(loc,pick);
-				pick = save;
-			}
-			loc = loc->prev;
-		}
-		if ((pick != save) && (loc == l))
-		if (pick->v <= loc->v)
-		{
-			delElem(pick);
-			insertBefore(loc,pick);
-			l = pick;
-		}
-		pick = save;
-		save = save->next;
-	}*/
-	return l;
-}
-//=============================================================
-
 GLint sgn(GLfloat expr)
 {
 	if (expr == 0) return 0;
 	return (expr>0) ? 1 : -1;
-}
-
-void enumEdges(void *d)
-{
-	printf_s("(%f;%f)--(%f;%f)\n", ((Edge *)d)->p0.x, ((Edge *)d)->p0.y, ((Edge *)d)->p1.x, ((Edge *)d)->p1.y);
-}
-
-void crosses(void *data)
-{
-	printf_s("( %d ) \n", ((Integer *)data)->value);
 }
